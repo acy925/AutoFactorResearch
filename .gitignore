@@ -1,0 +1,70 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local configuration
+config/local_settings.py
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite3
+
+# Credentials and sensitive information
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+# DolphinDB specific files
+*.ddb
+
+# LLM API keys and config
+.env.llm
+
+# Data files
+data/raw/
+data/processed/
+*.csv
+*.parquet
+*.h5
+*.pkl
+
+# Test files
+.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+
+# OS specific files
+.DS_Store
+Thumbs.db
