@@ -9,12 +9,12 @@ with open("README.md", "r", encoding="utf-8") as f:
 setup(
     name="autofactor",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="acy",
+    author_email="aichengyuan925@gmail.com",
     description="自动化量化因子研究框架",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/AutoFactorResearch",
+    url="https://github.com/acy925/AutoFactorResearch",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",

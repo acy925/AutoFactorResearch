@@ -34,6 +34,7 @@ DOLPHINDB = {
     "db_path": os.getenv("DOLPHINDB_DB_PATH", "dfs://quantdb"),
     "batch_size": int(os.getenv("DOLPHINDB_BATCH_SIZE", "10000")),
     "timeout": int(os.getenv("DOLPHINDB_TIMEOUT", "60")),
+    "test_mode": os.getenv("DOLPHINDB_TEST_MODE", "True").lower() in ("true", "1", "t"),  # 添加测试模式
 }
 
 # LLM 设置
