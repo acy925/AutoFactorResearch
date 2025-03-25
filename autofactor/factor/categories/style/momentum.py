@@ -1,3 +1,6 @@
+from autofactor.factor.base import Factor
+
+
 class MomentumFactor(Factor):
     """动量因子"""
     
