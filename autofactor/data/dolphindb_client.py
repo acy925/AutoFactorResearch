@@ -37,6 +37,7 @@ class DolphinDBClient:
         port: Optional[int] = None,
         username: Optional[str] = None,
         password: Optional[str] = None,
+        test_mode: Optional[bool] = None,
     ):
         """初始化DolphinDB客户端
 
@@ -51,7 +52,13 @@ class DolphinDBClient:
         self.username = username or DOLPHINDB["username"]
         self.password = password or DOLPHINDB["password"]
         self.conn = None
-        self.test_mode = DOLPHINDB.get("test_mode", False)  # 添加这一行，初始化测试模式
+
+        # 处理test_mode参数
+        if test_mode is not None:
+            self.test_mode = test_mode
+        else:
+            self.test_mode = DOLPHINDB.get("test_mode", False)
+
         self._connect()
 
     def _connect(self) -> None:
@@ -200,7 +207,7 @@ class DolphinDBClient:
                 # 模拟股票日线数据
                 data = {
                     "date": pd.date_range('2020-01-01', periods=n_rows),
-                    "stock_code": np.random.choice(["000001.SZ", "600000.SH", "300001.SZ"], n_rows),
+                    "symbol": np.random.choice(["000001.SZ", "600000.SH", "300001.SZ"], n_rows),
                     "open": np.random.rand(n_rows) * 100 + 10,
                     "high": np.random.rand(n_rows) * 100 + 15,
                     "low": np.random.rand(n_rows) * 100 + 5,
@@ -307,7 +314,7 @@ class DolphinDBClient:
             if table_name.lower() in ["daily_quote", "stock_daily"]:
                 return {
                     "name": table_name,
-                    "columns": {"date": "DATE", "stock_code": "SYMBOL", "open": "DOUBLE", 
+                    "columns": {"date": "DATE", "symbol": "SYMBOL", "open": "DOUBLE", 
                                 "high": "DOUBLE", "low": "DOUBLE", "close": "DOUBLE", 
                                 "volume": "LONG", "amount": "DOUBLE", "adj_factor": "DOUBLE"},
                     "row_count": 5000000,
@@ -325,7 +332,7 @@ class DolphinDBClient:
             elif table_name.lower() == "factor_data":
                 return {
                     "name": table_name,
-                    "columns": {"date": "DATE", "stock_code": "SYMBOL", "factor_value": "DOUBLE", 
+                    "columns": {"date": "DATE", "symbol": "SYMBOL", "factor_value": "DOUBLE", 
                                 "factor_name": "SYMBOL", "factor_group": "SYMBOL"},
                     "row_count": 8000000,
                     "partition_count": 30,
@@ -402,7 +409,7 @@ class DolphinDBClient:
                 
                 data = {
                     'date': dates,
-                    'stock_code': code,
+                    'symbol': code,
                     'open': prices * (1 + np.random.normal(0, 0.005, len(dates))),
                     'high': prices * (1 + np.random.normal(0, 0.01, len(dates))),
                     'low': prices * (1 - np.random.normal(0, 0.01, len(dates))),
@@ -453,6 +460,10 @@ class DolphinDBClient:
             for col in ["open", "high", "low", "close"]:
                 if col in data.columns:
                     data[f"{col}_adj"] = data[col] * data["adj_factor"]
+        
+        # 重要：列名转换            
+        if "stock_code" in data.columns:
+            data = data.rename(columns={"stock_code": "symbol"})
                     
         return data
 
@@ -568,7 +579,7 @@ def test_basic_functions():
             stock_codes=["000001.SZ", "600000.SH"],
             start_date="2022-01-01",
             end_date="2022-01-10",
-            fields=["date", "stock_code", "open", "close", "volume"]
+            fields=["date", "symbol", "open", "close", "volume"]
         )
         logger.info(f"股票数据 (前3行):\n{stock_data.head(3)}")
 

@@ -134,3 +134,17 @@ TRADING_DAYS_SETTINGS = {
     "lunch_break_end": "13:00:00",
     "timezone": "Asia/Shanghai",
 }
+
+# 数据处理配置
+DATA_PROCESS = {
+    "log_level": "INFO",
+    "cache_dir": os.path.join(BASE_DIR, "data", "cache"),
+    "cache_enabled": True,
+    "memory_cache_limit": 20,  # 内存缓存最大项数
+    "disk_cache_enabled": True,
+    "normalize_method": "zscore",  # 默认标准化方法
+    "missing_value_method": "ffill",  # 默认缺失值处理方法
+    "outlier_method": "winsorize", # 默认异常值处理方法
+    "outlier_limits": (0.01, 0.99),  # 默认异常值范围
+    "processing_mode": "auto",  # 'auto', 'local', 'db', 'hybrid'
+}
