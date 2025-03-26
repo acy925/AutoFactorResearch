@@ -81,7 +81,7 @@ class FactorPipeline:
                     if field not in required_fields:
                         required_fields.append(field)
         
-        logger.info(f"加载字段: {required_fields}")
+        # logger.info(f"加载字段: {required_fields}")
         
         # 加载数据
         data = self.data_processor.get_data(
@@ -92,7 +92,7 @@ class FactorPipeline:
             freq=freq
         )
         
-        logger.info(f"加载数据列: {data.columns.tolist()}")
+        # logger.info(f"加载数据列: {data.columns.tolist()}")
         
         # 执行每个步骤
         for step_type, step, params in self.steps:

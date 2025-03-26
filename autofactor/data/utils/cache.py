@@ -20,7 +20,9 @@ class CacheManager:
         """
         self.config = config or {}
         self.memory_cache = {}
-        self.cache_dir = self.config.get("cache_dir", "cache")
+        self.enabled = config.get("enabled", True)
+        self.cache_dir = config.get("cache_dir", "./cache")
+        # self.cache_dir = self.config.get("cache_dir", "cache")
         self.memory_limit = self.config.get("memory_cache_limit", 10)  # 默认最多缓存10个对象
         self.disk_enabled = self.config.get("disk_cache_enabled", True)
         

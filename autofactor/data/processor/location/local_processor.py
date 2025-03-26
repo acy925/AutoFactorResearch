@@ -388,6 +388,140 @@ class LocalDataProcessor(DataProcessor):
                         
         return result
     
+    def industry_neutralize(self, factor_data: pd.DataFrame,
+                          date_col: str = "date",
+                          symbol_col: str = "symbol",
+                          factor_col: str = "factor",
+                          industry_col: str = "industry") -> pd.DataFrame:
+        """行业中性化处理
+        
+        Args:
+            factor_data: 因子数据
+            date_col: 日期列名
+            symbol_col: 股票代码列名
+            factor_col: 因子值列名
+            industry_col: 行业列名
+            
+        Returns:
+            pd.DataFrame: 行业中性化后的因子数据
+        """
+        if industry_col not in factor_data.columns:
+            raise ValueError(f"行业列 {industry_col} 不存在，无法进行行业中性化")
+            
+        result = factor_data.copy()
+        
+        # 按日期分组进行行业中性化处理
+        for date, date_data in result.groupby(date_col):
+            # 准备回归变量（行业哑变量）
+            X = pd.get_dummies(date_data[industry_col], drop_first=True)
+            y = date_data[factor_col]
+            
+            try:
+                # 使用最小二乘法回归
+                from sklearn.linear_model import LinearRegression
+                model = LinearRegression()
+                model.fit(X, y)
+                
+                # 计算残差(中性化后的因子)
+                y_pred = model.predict(X)
+                result.loc[date_data.index, f"{factor_col}_neutral"] = y - y_pred
+            except:
+                # 如果回归失败，使用简单的减均值方法
+                result.loc[date_data.index, f"{factor_col}_neutral"] = date_data.groupby(
+                    industry_col
+                )[factor_col].transform(lambda x: x - x.mean())
+                
+        return result
+    
+    def market_cap_neutralize(self, factor_data: pd.DataFrame,
+                            date_col: str = "date",
+                            symbol_col: str = "symbol",
+                            factor_col: str = "factor",
+                            market_cap_col: str = "market_cap") -> pd.DataFrame:
+        """市值中性化处理
+        
+        Args:
+            factor_data: 因子数据
+            date_col: 日期列名
+            symbol_col: 股票代码列名
+            factor_col: 因子值列名
+            market_cap_col: 市值列名
+            
+        Returns:
+            pd.DataFrame: 市值中性化后的因子数据
+        """
+        if market_cap_col not in factor_data.columns:
+            raise ValueError(f"市值列 {market_cap_col} 不存在，无法进行市值中性化")
+            
+        result = factor_data.copy()
+        
+        # 对市值取对数
+        result[f"log_{market_cap_col}"] = np.log(result[market_cap_col])
+        
+        # 按日期分组进行市值中性化处理
+        for date, date_data in result.groupby(date_col):
+            X = date_data[[f"log_{market_cap_col}"]]
+            y = date_data[factor_col]
+            
+            try:
+                # 使用最小二乘法回归
+                from sklearn.linear_model import LinearRegression
+                model = LinearRegression()
+                model.fit(X, y)
+                
+                # 计算残差(中性化后的因子)
+                y_pred = model.predict(X)
+                result.loc[date_data.index, f"{factor_col}_size_neutral"] = y - y_pred
+            except:
+                # 如果回归失败，使用简单方法
+                result.loc[date_data.index, f"{factor_col}_size_neutral"] = y - y.mean()
+                
+        return result
+    
+    def neutralize(self, factor_data: pd.DataFrame,
+                 date_col: str = "date",
+                 symbol_col: str = "symbol",
+                 factor_col: str = "factor",
+                 industry_col: Optional[str] = None,
+                 market_cap_col: Optional[str] = None) -> pd.DataFrame:
+        """整合中性化处理
+        
+        Args:
+            factor_data: 因子数据
+            date_col: 日期列名
+            symbol_col: 股票代码列名
+            factor_col: 因子值列名
+            industry_col: 行业列名（可选）
+            market_cap_col: 市值列名（可选）
+            
+        Returns:
+            pd.DataFrame: 中性化后的因子数据
+        """
+        result = factor_data.copy()
+        
+        # 行业中性化
+        if industry_col is not None:
+            result = self.industry_neutralize(
+                result,
+                date_col=date_col,
+                symbol_col=symbol_col,
+                factor_col=factor_col,
+                industry_col=industry_col
+            )
+            factor_col = f"{factor_col}_neutral"  # 更新列名
+            
+        # 市值中性化
+        if market_cap_col is not None:
+            result = self.market_cap_neutralize(
+                result,
+                date_col=date_col,
+                symbol_col=symbol_col,
+                factor_col=factor_col,
+                market_cap_col=market_cap_col
+            )
+            
+        return result
+    
     def compute_factor(self, factor_name: str,
                       symbols: Union[str, List[str]],
                       start_date: str,

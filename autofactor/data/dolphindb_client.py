@@ -97,7 +97,6 @@ class DolphinDBClient:
         """执行DolphinDB脚本"""
         if getattr(self, 'test_mode', False):
             logger.info(f"测试模式执行脚本: {script}")
-            # 简单模拟一些基本操作
             if "version()" in script:
                 return "测试模式 v1.0.0"
             elif "1 + 1" in script:
@@ -105,6 +104,58 @@ class DolphinDBClient:
             elif "table(" in script:
                 import pandas as pd
                 return pd.DataFrame()
+            elif "getStockData" in script:
+                import pandas as pd
+                import numpy as np
+                
+                try:
+                    # 提取 getStockData 调用行
+                    call_line = script.strip().split('\n')[-1]  # 取最后一行调用
+                    params_str = call_line.split("getStockData(")[1].split(")")[0]
+                    args = [arg.strip() for arg in params_str.split(",")]
+                    
+                    # 解析 symbols
+                    symbols_str = args[0]
+                    if symbols_str.startswith("[") and symbols_str.endswith("]"):
+                        symbols = [s.strip().strip("'") for s in symbols_str[1:-1].split(",")]
+                    else:
+                        symbols = [symbols_str.strip("'")]
+                    
+                    # 解析日期（假设日期在固定的第1和第2个位置后）
+                    start_date = None
+                    end_date = None
+                    for i, arg in enumerate(args[1:], 1):
+                        if arg.startswith("'") and arg.endswith("'") and '-' in arg:
+                            if start_date is None:
+                                start_date = arg.strip("'")
+                            elif end_date is None:
+                                end_date = arg.strip("'")
+                                break
+                    if not start_date or not end_date:
+                        raise ValueError("无法解析 start_date 或 end_date")
+                    
+                    logger.debug(f"解析结果: symbols={symbols}, start_date={start_date}, end_date={end_date}")
+                    
+                    # 生成日期范围
+                    dates = pd.date_range(start=start_date, end=end_date, freq='D')
+                    
+                    # 生成模拟数据
+                    data = pd.DataFrame({
+                        "date": np.repeat(dates, len(symbols)),
+                        "symbol": np.tile(symbols, len(dates)),
+                        "open": np.random.rand(len(dates) * len(symbols)) * 100,
+                        "high": np.random.rand(len(dates) * len(symbols)) * 110,
+                        "low": np.random.rand(len(dates) * len(symbols)) * 90,
+                        "close": np.random.rand(len(dates) * len(symbols)) * 100,
+                        "volume": np.random.randint(1000, 10000, len(dates) * len(symbols)),
+                        "amount": np.random.randint(10000, 100000, len(dates) * len(symbols)),
+                        "adj_factor": np.random.rand(len(dates) * len(symbols)) + 0.5
+                    })
+                    logger.debug(f"生成模拟数据: 形状={data.shape}")
+                    return data
+                except Exception as e:
+                    logger.error(f"测试模式解析 getStockData 脚本失败: {e}")
+                    return pd.DataFrame({"date": [], "symbol": [], "close": []})
             elif "select" in script:
                 import pandas as pd
                 return pd.DataFrame({'date': pd.date_range('2018-01-01', periods=3),
@@ -176,23 +227,28 @@ class DolphinDBClient:
         except Exception as e:
             logger.error(f"上传数据到DolphinDB失败: {e}")
             return False
+    
 
     def query_table(
-        self, 
-        table_name: str, 
+        self,
+        table_name: str,
         columns: Optional[List[str]] = None,
         condition: Optional[str] = None,
         db_path: Optional[str] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        sort_by: Optional[str] = None,
+        ascending: bool = True
     ) -> pd.DataFrame:
         """查询DolphinDB表数据
 
         Args:
             table_name: 表名
             columns: 需要查询的列，默认查询所有列
-            condition: 查询条件，例如 "date between 2020.01.01 and 2020.12.31"
+            condition: 查询条件，例如 "date between '2020-01-01' and '2020-12-31' and symbol in ('000001.SZ')"
             db_path: 数据库路径，默认使用配置中的路径
             limit: 限制返回行数
+            sort_by: 排序字段
+            ascending: 是否升序排序
 
         Returns:
             pd.DataFrame: 查询结果
@@ -200,76 +256,149 @@ class DolphinDBClient:
         if self.test_mode:
             import pandas as pd
             import numpy as np
-            
-            # 生成模拟数据
-            n_rows = limit or 100
-            if table_name.lower() in ["daily_quote", "stock_daily"]:
-                # 模拟股票日线数据
+
+            n_rows = limit if limit is not None and limit > 0 else 1000
+            start_date = pd.Timestamp("2022-01-01")
+            end_date = pd.Timestamp("2022-01-05")
+            symbols = ["000001.SZ", "600000.SH"]
+
+            if condition:
+                try:
+                    if "date between" in condition.lower():
+                        date_part = condition.lower().split("date between")[1].split("and symbol")[0].strip()
+                        dates = [d.strip("'") for d in date_part.split(" and ")]
+                        start_date = pd.to_datetime(dates[0])
+                        end_date = pd.to_datetime(dates[1])
+                    if "symbol in" in condition:
+                        symbol_part = condition.split("symbol in")[1].strip()
+                        if symbol_part.startswith("(") and symbol_part.endswith(")"):
+                            symbols = [s.strip().strip("'") for s in symbol_part[1:-1].split(",")]
+                        else:
+                            symbols = [symbol_part.strip("'")]
+                except Exception as e:
+                    logger.warning(f"测试模式条件解析失败: {e}, 使用默认日期和股票代码")
+
+            table_lower = table_name.lower()
+            required_columns = ["symbol", "date"]
+            if "minute" in table_lower:
+                required_columns.append("time")
+
+            if table_lower in ["daily_quote", "stock_daily"]:
+                dates = pd.date_range(start=start_date, end=end_date, freq="D")
                 data = {
-                    "date": pd.date_range('2020-01-01', periods=n_rows),
-                    "symbol": np.random.choice(["000001.SZ", "600000.SH", "300001.SZ"], n_rows),
-                    "open": np.random.rand(n_rows) * 100 + 10,
-                    "high": np.random.rand(n_rows) * 100 + 15,
-                    "low": np.random.rand(n_rows) * 100 + 5,
-                    "close": np.random.rand(n_rows) * 100 + 10,
-                    "volume": np.random.randint(1000, 10000000, n_rows),
-                    "amount": np.random.randint(10000, 100000000, n_rows),
-                    "adj_factor": np.random.rand(n_rows) + 0.5,
+                    "date": pd.to_datetime(np.repeat(dates, len(symbols))),  # 确保 datetime64[ns]
+                    "symbol": np.tile(symbols, len(dates)),
+                    "open": np.round(np.random.rand(len(dates) * len(symbols)) * 100 + 10, 2),
+                    "high": np.round(np.random.rand(len(dates) * len(symbols)) * 100 + 15, 2),
+                    "low": np.round(np.random.rand(len(dates) * len(symbols)) * 100 + 5, 2),
+                    "close": np.round(np.random.rand(len(dates) * len(symbols)) * 100 + 10, 2),
+                    "volume": np.random.randint(1000, 10000000, size=len(dates) * len(symbols)),
+                    "amount": np.round(np.random.rand(len(dates) * len(symbols)) * 1000000, 2),
+                    "adj_factor": np.round(np.random.rand(len(dates) * len(symbols)) + 0.5, 6),
                 }
-            elif table_name.lower() in ["trade_calendar"]:
-                # 模拟交易日历
+            elif table_lower in ["minute_quote", "stock_minute"]:
+                dates = pd.date_range(start=start_date, end=end_date, freq="1min")
+                total_rows = len(dates) * len(symbols)
                 data = {
-                    "date": pd.date_range('2020-01-01', periods=n_rows),
-                    "is_trading_day": np.random.choice([0, 1], n_rows, p=[0.3, 0.7]),
-                    "exchange": np.random.choice(["SSE", "SZSE"], n_rows),
+                    "symbol": np.tile(symbols, len(dates)),
+                    "date": pd.to_datetime([d.date() for d in dates] * len(symbols)),  # 转换为 datetime64[ns]
+                    "time": [d.time() for d in dates] * len(symbols),
+                    "open": np.round(np.random.rand(total_rows) * 100 + 10, 2),
+                    "high": np.round(np.random.rand(total_rows) * 100 + 15, 2),
+                    "low": np.round(np.random.rand(total_rows) * 100 + 5, 2),
+                    "close": np.round(np.random.rand(total_rows) * 100 + 10, 2),
+                    "volume": np.random.randint(100, 100000, size=total_rows),
+                    "amount": np.round(np.random.rand(total_rows) * 10000, 2),
+                    "adj_factor": np.round(np.random.rand(total_rows) + 0.5, 6),
+                }
+                df = pd.DataFrame(data)
+                trading_hours = [
+                    (pd.Timestamp("09:30:00").time(), pd.Timestamp("11:30:00").time()),
+                    (pd.Timestamp("13:00:00").time(), pd.Timestamp("15:00:00").time())
+                ]
+                mask = df["time"].apply(lambda t: any(start <= t <= end for start, end in trading_hours))
+                df = df[mask].reset_index(drop=True)
+                if n_rows and len(df) > n_rows:
+                    df = df.head(n_rows)
+            elif table_lower in ["trade_calendar", "exchange_calendar"]:
+                dates = pd.date_range(start=start_date, end=end_date, freq="D")
+                data = {
+                    "date": pd.to_datetime(dates),
+                    "is_trading_day": np.random.choice([0, 1], size=len(dates), p=[0.3, 0.7]),
+                    "exchange": np.random.choice(["SSE", "SZSE"], len(dates)),
+                    "prev_trading_day": dates - pd.to_timedelta(np.random.randint(1, 5, size=len(dates)), unit="D"),
+                    "next_trading_day": dates + pd.to_timedelta(np.random.randint(1, 5, size=len(dates)), unit="D"),
                 }
             else:
-                # 通用模拟数据
+                dates = pd.date_range(start=start_date, end=end_date, freq="D")
                 data = {
-                    "date": pd.date_range('2020-01-01', periods=n_rows),
-                    "value1": np.random.rand(n_rows) * 100,
-                    "value2": np.random.rand(n_rows) * 200,
-                    "category": np.random.choice(["A", "B", "C"], n_rows),
+                    "date": pd.to_datetime(dates),
+                    "value1": np.round(np.random.rand(len(dates)) * 100, 4),
+                    "value2": np.round(np.random.rand(len(dates)) * 200, 4),
+                    "category": np.random.choice(["A", "B", "C", "D"], len(dates)),
+                    "flag": np.random.choice([True, False], len(dates)),
                 }
-                
-            df = pd.DataFrame(data)
-            
-            # 如果指定了列，只返回指定列
+
+            if "minute" not in table_lower:
+                df = pd.DataFrame(data)
+
             if columns:
-                existing_cols = [col for col in columns if col in df.columns]
-                df = df[existing_cols]
-                
+                requested_cols = set(columns)
+                available_cols = set(df.columns)
+                final_cols = list(requested_cols.intersection(available_cols).union(set(required_columns)))
+                df = df[final_cols]
+            else:
+                pass
+
+            if sort_by and sort_by in df.columns:
+                df = df.sort_values(sort_by, ascending=ascending)
+            if limit and limit > 0 and "minute" not in table_lower:
+                df = df.head(limit)
+
+            logger.debug(f"生成的数据列: {df.columns.tolist()}")
+            if "symbol" in df.columns:
+                logger.debug(f"生成的数据包含股票: {df['symbol'].unique().tolist()}")
+            if df.empty:
+                logger.warning(f"测试模式生成的数据为空，条件: {condition}")
+
             return df
-    
+
+        # 实际数据库查询部分保持不变
         if db_path is None:
             db_path = DOLPHINDB["db_path"]
-
         try:
-            # 构建SQL查询
             cols_str = "*" if columns is None else ", ".join(columns)
             query = f"select {cols_str} from loadTable('{db_path}', '{table_name}')"
-            
+
             if condition:
                 query += f" where {condition}"
-                
+            if sort_by:
+                query += f" order by {sort_by} {'asc' if ascending else 'desc'}"
             if limit:
                 query += f" limit {limit}"
-                
-            # 执行查询
+
+            logger.debug(f"执行DolphinDB查询: {query}")
             result = self.execute(query)
-            
-            # 将结果转换为Pandas DataFrame
-            if isinstance(result, (pd.DataFrame, pd.Series)):
-                return result
+
+            if isinstance(result, pd.DataFrame):
+                final_df = result
             elif hasattr(result, "toDF"):
-                return result.toDF()
+                final_df = result.toDF()
             else:
-                logger.warning(f"查询结果类型未知: {type(result)}")
+                logger.warning(f"无法识别的查询结果类型: {type(result)}")
                 return pd.DataFrame()
-                
+
+            if columns and len(final_df.columns) == len(columns):
+                final_df.columns = columns
+
+            return final_df
+
         except Exception as e:
-            logger.error(f"查询DolphinDB表 {table_name} 失败: {e}")
-            raise
+            logger.error(f"查询表 {table_name} 失败: {str(e)}")
+            return pd.DataFrame()
+
+
+        
     def list_tables(self, db_path: Optional[str] = None) -> List[str]:
         """列出数据库中的所有表
 

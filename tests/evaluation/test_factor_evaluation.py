@@ -160,5 +160,7 @@ if __name__ == "__main__":
     logger.remove()
     logger.add(sys.stderr, level="INFO")
     
+    
     # 运行测试
     test_factor_evaluation()
+
